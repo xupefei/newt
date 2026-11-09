@@ -17,6 +17,9 @@ func WindowsAddRoute(destination string, gateway string, interfaceName string) e
 	if runtime.GOOS != "windows" {
 		return nil
 	}
+	if NativeConfigDisabled {
+		return nil
+	}
 
 	// Parse destination CIDR
 	_, ipNet, err := net.ParseCIDR(destination)
@@ -110,6 +113,9 @@ func WindowsAddRoute(destination string, gateway string, interfaceName string) e
 // (0.0.0.0/1 + 128.0.0.0/1 on the tunnel) is installed still resolves to the
 // physical default route rather than back into the tunnel.
 func WindowsAddBypassRoute(destIP string, tunnelInterface string) error {
+	if NativeConfigDisabled {
+		return nil
+	}
 	_, err := windowsEnsureBypassRoute(destIP, tunnelInterface)
 	return err
 }
@@ -209,6 +215,9 @@ func windowsBypassNextHop(routes []winipcfg.MibIPforwardRow2, addr netip.Addr, t
 // route is the most specific match for destIP and the lookup would just find
 // itself - so it instead deletes by exact destination prefix alone.
 func WindowsRemoveBypassRoute(destIP string) error {
+	if NativeConfigDisabled {
+		return nil
+	}
 	addr, err := netip.ParseAddr(destIP)
 	if err != nil {
 		return fmt.Errorf("invalid destination address: %v", err)
@@ -242,6 +251,10 @@ func WindowsRemoveBypassRoute(destIP string) error {
 }
 
 func WindowsRemoveRoute(destination string, interfaceName string) error {
+	if NativeConfigDisabled {
+		return nil
+	}
+
 	// Parse destination CIDR
 	_, ipNet, err := net.ParseCIDR(destination)
 	if err != nil {

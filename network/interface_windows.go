@@ -12,6 +12,10 @@ import (
 )
 
 func configureWindows(interfaceName string, ip net.IP, ipNet *net.IPNet) error {
+	if NativeConfigDisabled {
+		return nil
+	}
+
 	logger.Info("Configuring Windows interface: %s", interfaceName)
 
 	// Get the LUID for the interface
@@ -63,6 +67,10 @@ func configureWindows(interfaceName string, ip net.IP, ipNet *net.IPNet) error {
 }
 
 func removeWindowsAddress(interfaceName string, ip net.IP, ipNet *net.IPNet) error {
+	if NativeConfigDisabled {
+		return nil
+	}
+
 	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
 		return fmt.Errorf("failed to get interface %s: %v", interfaceName, err)

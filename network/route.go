@@ -42,18 +42,29 @@ const VPNRouteMetric = 9999
 // this to true (e.g. from a config value) before routes are added.
 var PreferLocalRoutes = false
 
-// NativeConfigDisabled, when true, skips the raw `ifconfig`/`route` subprocess
-// calls this package otherwise makes on darwin (configureDarwin,
-// removeDarwinAddress, DarwinAddRouteWithSource, DarwinRemoveRoute) while still
-// populating the JSON-facing NetworkSettings state. This must be set when the
-// TUN device's addresses/routes are instead owned by an external mechanism
-// that reconciles them independently - namely Apple's NetworkExtension
-// (NEPacketTunnelProvider.setTunnelNetworkSettings), which is the sole
-// sanctioned way to configure that virtual interface. Running our own
-// ifconfig/route commands in addition to NE applying its own settings was
-// observed to install two competing routes to the same destination (one via
-// NE's gatewayAddress-based route, one via our own `-ifa` route), so the two
-// mechanisms must be mutually exclusive rather than layered.
+// NativeConfigDisabled, when true, makes this package leave the host's
+// interfaces and routing table alone on every platform, while still
+// populating the JSON-facing NetworkSettings state. The functions that would
+// add or remove an interface address or a route return without doing so
+// (configureDarwin/Linux/Windows, removeDarwin/Linux/WindowsAddress and the
+// Darwin*, Linux* and Windows* route functions), and ManagesHostRoutes
+// reports false, which also makes WatchRouteChanges and ReconcileBypassRoute
+// no-ops. Set it when the tunnel's addresses and routes are not this
+// package's to manage:
+//
+//   - The TUN device's addresses/routes are owned by an external mechanism
+//     that reconciles them independently - namely Apple's NetworkExtension
+//     (NEPacketTunnelProvider.setTunnelNetworkSettings), which is the sole
+//     sanctioned way to configure that virtual interface. Running our own
+//     ifconfig/route commands in addition to NE applying its own settings
+//     was observed to install two competing routes to the same destination
+//     (one via NE's gatewayAddress-based route, one via our own `-ifa`
+//     route), so the two mechanisms must be mutually exclusive rather than
+//     layered.
+//   - The WireGuard device has no OS interface at all, e.g. it runs on a
+//     userspace network stack (golang.zx2c4.com/wireguard/tun/netstack), so
+//     there is nothing on the host to configure and any route would capture
+//     host traffic for an interface that does not exist.
 var NativeConfigDisabled = false
 
 // DarwinAddRoute adds a route via the BSD routing table. Unlike Linux/Windows,
@@ -133,6 +144,9 @@ func LinuxAddRoute(destination string, gateway string, interfaceName string) err
 	if runtime.GOOS != "linux" {
 		return nil
 	}
+	if NativeConfigDisabled {
+		return nil
+	}
 
 	// Parse destination CIDR
 	_, ipNet, err := net.ParseCIDR(destination)
@@ -181,6 +195,9 @@ func LinuxAddRoute(destination string, gateway string, interfaceName string) err
 
 func LinuxRemoveRoute(destination string, interfaceName string) error {
 	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if NativeConfigDisabled {
 		return nil
 	}
 
@@ -234,6 +251,9 @@ var ErrNoPhysicalRoute = errors.New("no route outside the tunnel")
 // linuxBypassNextHop. Replaces any existing /32 route to destIP.
 func LinuxAddBypassRoute(destIP string, tunnelInterface string) error {
 	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if NativeConfigDisabled {
 		return nil
 	}
 	_, err := linuxEnsureBypassRoute(destIP, tunnelInterface)
@@ -353,6 +373,9 @@ func isHostRouteTo(dst *net.IPNet, ip net.IP) bool {
 // instead deletes by destination alone.
 func LinuxRemoveBypassRoute(destIP string) error {
 	if runtime.GOOS != "linux" {
+		return nil
+	}
+	if NativeConfigDisabled {
 		return nil
 	}
 
@@ -633,13 +656,15 @@ func ReconcileBypassRoute(destIP string, tunnelInterface string) (bool, error) {
 
 // ManagesHostRoutes reports whether this package installs routes in the host
 // OS routing table itself (desktop platforms), as opposed to only populating
-// NetworkSettings for a mobile/NetworkExtension host app to apply.
+// NetworkSettings for a mobile/NetworkExtension host app to apply. False
+// while NativeConfigDisabled is set.
 func ManagesHostRoutes() bool {
+	if NativeConfigDisabled {
+		return false
+	}
 	switch runtime.GOOS {
-	case "linux", "windows":
+	case "linux", "windows", "darwin":
 		return true
-	case "darwin":
-		return !NativeConfigDisabled
 	}
 	return false
 }

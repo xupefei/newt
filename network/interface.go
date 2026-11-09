@@ -145,6 +145,10 @@ func configureDarwin(interfaceName string, ip net.IP, ipNet *net.IPNet) error {
 }
 
 func configureLinux(interfaceName string, ip net.IP, ipNet *net.IPNet) error {
+	if NativeConfigDisabled {
+		return nil
+	}
+
 	// Get the interface
 	link, err := netlink.LinkByName(interfaceName)
 	if err != nil {
@@ -232,6 +236,10 @@ func RemoveSecondaryAddress(interfaceName string, addr string) error {
 }
 
 func removeLinuxAddress(interfaceName string, ip net.IP, ipNet *net.IPNet) error {
+	if NativeConfigDisabled {
+		return nil
+	}
+
 	link, err := netlink.LinkByName(interfaceName)
 	if err != nil {
 		return fmt.Errorf("failed to get interface %s: %v", interfaceName, err)
