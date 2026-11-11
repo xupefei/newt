@@ -2,6 +2,7 @@ package holepunch
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -281,6 +282,11 @@ func (t *HolepunchTester) TestEndpoint(endpoint string, timeout time.Duration) T
 		return result
 	}
 
+	if err := checkRoute(remoteAddr); err != nil {
+		result.Error = err
+		return result
+	}
+
 	// Generate random data for the test packet
 	randomData := make([]byte, bind.MagicPacketDataLen)
 	if _, err := rand.Read(randomData); err != nil {
@@ -368,6 +374,11 @@ func TestConnectionWithBind(sharedBind *bind.SharedBind, endpoint string, opts *
 		return result
 	}
 
+	if err := checkRoute(remoteAddr); err != nil {
+		result.Error = err
+		return result
+	}
+
 	// Generate random data for the test packet
 	randomData := make([]byte, bind.MagicPacketDataLen)
 	if _, err := rand.Read(randomData); err != nil {
@@ -421,4 +432,27 @@ func TestConnectionWithBind(sharedBind *bind.SharedBind, endpoint string, opts *
 	}
 
 	return result
+}
+
+// ErrNoRoute is returned (wrapped) by TestEndpoint and TestConnectionWithBind
+// when this host has no route to the endpoint. No test packet is sent then.
+var ErrNoRoute = errors.New("no route to endpoint")
+
+// checkRoute reports an error if this host has no route to addr, such as an
+// IPv6 endpoint on an IPv4-only network. Connecting a throwaway UDP socket
+// only looks up the route; nothing is sent.
+//
+// Test packets go through the socket WireGuard uses, so they must not be sent
+// to unroutable endpoints. On macOS with a content filter attached (endpoint
+// security software uses one), the filter holds each outgoing datagram and
+// sends it later. When that send fails, the error is reported on the
+// socket's next send instead, which is often a WireGuard handshake to a peer
+// that is reachable. A site that advertises IPv6 local endpoints could then
+// stop a client on an IPv4-only network from connecting at all.
+func checkRoute(addr *net.UDPAddr) error {
+	c, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return fmt.Errorf("%w %s: %v", ErrNoRoute, addr, err)
+	}
+	return c.Close()
 }
